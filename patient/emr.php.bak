@@ -1,0 +1,392 @@
+<?php
+session_start();
+
+if(isset($_SESSION["user"])){
+    if(($_SESSION["user"])=="" or $_SESSION['usertype']!='p'){
+        header("location: ../login.php");
+    }else{
+        $useremail=$_SESSION["user"];
+    }
+
+}else{
+    header("location: ../login.php");
+}
+
+include("../connection.php");
+
+$sql_check = "SHOW TABLES LIKE 'medical_records'";
+$result_check = $database->query($sql_check);
+
+if ($result_check->num_rows == 0) {
+    echo '<!DOCTYPE html>';
+    echo '<html lang="en">';
+    echo '<head>';
+    echo '    <meta charset="UTF-8">';
+    echo '    <meta http-equiv="X-UA-Compatible" content="IE=edge">';
+    echo '    <meta name="viewport" content="width=device-width, initial-scale=1.0">';
+    echo '    <link rel="stylesheet" href="../css/animations.css">';
+    echo '    <link rel="stylesheet" href="../css/main.css">';
+    echo '    <link rel="stylesheet" href="../css/admin.css">';
+    echo '    <link rel="stylesheet" href="../css/emr.css">';
+    echo '    <title>My Medical Records</title>';
+    echo '    <style>';
+    echo '        .container { max-width: 800px; margin: 50px auto; padding: 20px; }';
+    echo '        .alert { padding: 20px; border-radius: 8px; margin: 20px 0; }';
+    echo '        .alert-warning { background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; }';
+    echo '        .btn { display: inline-block; padding: 12px 24px; background: #2196F3; color: white; text-decoration: none; border-radius: 4px; }';
+    echo '        .btn:hover { background: #1976D2; }';
+    echo '    </style>';
+    echo '</head>';
+    echo '<body>';
+    echo '    <div class="container">';
+    echo '        <div class="alert alert-warning">';
+    echo '            <h2>⚠ Database Setup Required</h2>';
+    echo '            <p>The Electronic Medical Records (EMR) feature requires database tables that haven\'t been created yet.</p>';
+    echo '            <p>Please run the database setup script to enable this feature:</p>';
+    echo '            <ol>';
+    echo '                <li>Go to: <a href="../INSTALL_EMR.html">Install EMR Tables</a></li>';
+    echo '                <li>Click "Install EMR Tables Now"</li>';
+    echo '                <li>Or re-import <code>SQL_Database_edoc.sql</code> to your database</li>';
+    echo '            </ol>';
+    echo '            <p>Or manually import the <code>SQL_Database_edoc.sql</code> file into your database.</p>';
+    echo '            <a href="index.php" class="btn">← Back to Dashboard</a>';
+    echo '        </div>';
+    echo '    </div>';
+    echo '</body>';
+    echo '</html>';
+    exit();
+}
+
+$sqlmain= "select * from patient where pemail=?";
+$stmt = $database->prepare($sqlmain);
+$stmt->bind_param("s",$useremail);
+$stmt->execute();
+$userrow = $stmt->get_result();
+$userfetch=$userrow->fetch_assoc();
+$patient_id=$userfetch["pid"];
+$username=$userfetch["pname"];
+
+// Check if medical_records table exists
+$sql_check = "SHOW TABLES LIKE 'medical_records'";
+$result_check = $database->query($sql_check);
+
+if ($result_check->num_rows > 0) {
+    // Use medical_records table if it exists
+    $sql_records = "SELECT mr.*, d.docname as doctor_name 
+                    FROM medical_records mr 
+                    INNER JOIN doctor d ON mr.doctor_id = d.docid 
+                    WHERE mr.patient_id = ? 
+                    ORDER BY mr.visit_date DESC";
+    $stmt_records = $database->prepare($sql_records);
+    $stmt_records->bind_param("i", $patient_id);
+    $stmt_records->execute();
+    $records_result = $stmt_records->get_result();
+} else {
+    // Fall back to medical_documents table if medical_records doesn't exist
+    $sql_docs = "SELECT md.*, d.docname FROM medical_documents md 
+                 JOIN doctor d ON md.doctor_id = d.docid 
+                 WHERE md.patient_id = ? 
+                 ORDER BY md.created_date DESC";
+    $stmt_docs = $database->prepare($sql_docs);
+    $stmt_docs->bind_param("i", $patient_id);
+    $stmt_docs->execute();
+    $records_result = $stmt_docs->get_result();
+}
+
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../css/animations.css">  
+    <link rel="stylesheet" href="../css/main.css">  
+    <link rel="stylesheet" href="../css/admin.css">
+    <link rel="stylesheet" href="../css/emr.css">
+    <title>My Medical Records</title>
+    <script>
+        function printPage() {
+            window.print();
+        }
+    </script>
+    <style>
+        .popup{
+            animation: transitionIn-Y-bottom 0.5s;
+        }
+        .sub-table{
+            animation: transitionIn-Y-bottom 0.5s;
+        }
+        .table-headin{
+            background: #2196F3;
+            color: white;
+        }
+        .table-headin:hover{
+            background: #1976D2;
+        }
+        .menu-icon-medical{
+            background: #E3F2FD;
+        }
+        .menu-icon-medical:hover{
+            background: #BBDEFB;
+        }
+        .menu-text.menu-icon-medical{
+            color: #1976D2;
+        }
+        .dashboard-icons{
+            background: #2196F3;
+        }
+        .btn-icon-back{
+            background: #2196F3;
+        }
+        .sub-table tr:hover{
+            background: #E3F2FD;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="menu">
+            <table class="menu-container" border="0">
+                <tr>
+                    <td style="padding:10px" colspan="2">
+                        <table border="0" class="profile-container">
+                            <tr>
+                                <td width="30%" style="padding-left:20px" >
+                                    <img src="../img/user.png" alt="" width="100%" style="border-radius:50%">
+                                </td>
+                                <td style="padding:0px;margin:0px;">
+                                    <p class="profile-title"><?php echo substr($username,0,13)  ?>..</p>
+                                    <p class="profile-subtitle"><?php echo substr($useremail,0,22)  ?></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td colspan="2">
+                                    <a href="../logout.php" ><input type="button" value="Log out" class="logout-btn btn-primary-soft btn"></a>
+                                </td>
+                            </tr>
+                    </table>
+                    </td>
+                </tr>
+                <tr class="menu-row" >
+                    <td class="menu-btn menu-icon-home " >
+                        <a href="index.php" class="non-style-link-menu "><div><p class="menu-text">Home</p></div></a>
+                    </td>
+                </tr>
+                <tr class="menu-row">
+                    <td class="menu-btn menu-icon-doctor">
+                        <a href="doctors.php" class="non-style-link-menu"><div><p class="menu-text">All Doctors</p></div></a>
+                    </td>
+                </tr>
+                
+                <tr class="menu-row" >
+                    <td class="menu-btn menu-icon-session">
+                        <a href="schedule.php" class="non-style-link-menu"><div><p class="menu-text">Scheduled Sessions</p></div></a>
+                    </td>
+                </tr>
+                <tr class="menu-row" >
+                    <td class="menu-btn menu-icon-appoinment">
+                        <a href="appointment.php" class="non-style-link-menu"><div><p class="menu-text">My Bookings</p></div></a>
+                    </td>
+                </tr>
+                <tr class="menu-row" >
+                    <td class="menu-btn menu-icon-feedback">
+                        <a href="feedback.php" class="non-style-link-menu"><div><p class="menu-text">Feedback</p></div></a>
+                    </td>
+                </tr>
+                <tr class="menu-row" >
+                    <td class="menu-btn menu-icon-report">
+                        <a href="reports.php" class="non-style-link-menu"><div><p class="menu-text">My Reports</p></div></a>
+                    </td>
+                </tr>
+                <tr class="menu-row" >
+                    <td class="menu-btn menu-icon-chatbot">
+                        <a href="chatbot.php" class="non-style-link-menu"><div><p class="menu-text">Medical Assistant</p></div></a>
+                    </td>
+                </tr>
+                <tr class="menu-row" >
+                    <td class="menu-btn menu-icon-payment">
+                        <a href="payment_reports.php" class="non-style-link-menu"><div><p class="menu-text">My Payments</p></div></a>
+                    </td>
+                </tr>
+                <tr class="menu-row" >
+                    <td class="menu-btn menu-icon-medical menu-active menu-icon-medical-active">
+                        <a href="emr.php" class="non-style-link-menu non-style-link-menu-active"><div><p class="menu-text">My Health Records</p></a></div>
+                    </td>
+                </tr>
+                <tr class="menu-row" >
+                    <td class="menu-btn menu-icon-settings">
+                        <a href="settings.php" class="non-style-link-menu"><div><p class="menu-text">Settings</p></div></a>
+                    </td>
+                </tr>
+                <tr class="menu-row" >
+                    <td class="menu-btn menu-icon-heart">
+                        <a href="../health-tips-public.php" class="non-style-link-menu"><div><p class="menu-text">Health Tips</p></div></a>
+                    </td>
+                </tr>
+                
+            </table>
+        </div>
+        <div class="dash-body" style="margin-top: 15px">
+            <table border="0" width="100%" style=" border-spacing: 0;margin:0;padding:0;" >
+                <tr >
+                    <td colspan="1" class="nav-bar" >
+                        <p style="font-size: 23px;padding-left:12px;font-weight: 600;margin-left:20px;">My Health Records</p>
+                    </td>
+                    <td width="25%">
+                        <button onclick="printPage()" class="login-btn btn-primary btn" style="float:right; margin-right: 10px;">Print All Records</button>
+                    </td>
+                    <td width="15%">
+                        <p style="font-size: 14px;color: rgb(119, 119, 119);padding: 0;margin: 0;text-align: right;">
+                            Today's Date
+                        </p>
+                        <p class="heading-sub12" style="padding: 0;margin: 0;">
+                            <?php 
+                            date_default_timezone_set('Asia/Kolkata');
+                            $today = date('Y-m-d');
+                            echo $today;
+                            ?>
+                        </p>
+                    </td>
+                    <td width="10%">
+                        <button  class="btn-label"  style="display: flex;justify-content: center;align-items: center;"><img src="../img/calendar.svg" width="100%"></button>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td colspan="4">
+                        <center>
+                        <div class="filter-container" style="width:95%;">
+                            <h3>My Health History</h3>
+                            <?php if ($records_result->num_rows > 0): ?>
+                                <?php while($record = $records_result->fetch_assoc()): ?>
+                                    <?php
+                                    // Check if this is a medical_records entry or medical_documents entry
+                                    $is_medical_document = !isset($record['visit_date']);
+                                    ?>
+                                    <div class="record-card">
+                                        <div class="record-header">
+                                            <?php if ($is_medical_document): ?>
+                                                <div class="record-title">From Dr. <?php echo htmlspecialchars($record["docname"]); ?> - <?php echo ucfirst(str_replace('_', ' ', $record["document_type"])); ?></div>
+                                                <div class="record-date">Document Date: <?php echo date("M j, Y", strtotime($record["created_date"])); ?></div>
+                                            <?php else: ?>
+                                                <div class="record-title">Visit with Dr. <?php echo htmlspecialchars($record["doctor_name"]); ?> on <?php echo date("M j, Y", strtotime($record["visit_date"])); ?></div>
+                                                <div class="record-date">Recorded on <?php echo date("M j, Y g:i A", strtotime($record["created_date"])); ?></div>
+                                            <?php endif; ?>
+                                        </div>
+                                        
+                                        <?php if ($is_medical_document): ?>
+                                            <!-- Display medical document -->
+                                            <div class="section-title"><?php echo ucfirst(str_replace('_', ' ', $record["document_type"])); ?></div>
+                                            <p><?php echo nl2br(htmlspecialchars($record["document_content"])); ?></p>
+                                        <?php else: ?>
+                                            <!-- Display medical record -->
+                                            <?php if ($record["chief_complaint"]): ?>
+                                                <div class="section-title">Chief Complaint</div>
+                                                <p><?php echo nl2br(htmlspecialchars($record["chief_complaint"])); ?></p>
+                                            <?php endif; ?>
+                                            
+                                            <?php if ($record["diagnosis"]): ?>
+                                                <div class="section-title">Diagnosis</div>
+                                                <p><?php echo nl2br(htmlspecialchars($record["diagnosis"])); ?></p>
+                                            <?php endif; ?>
+                                            
+                                            <?php if ($record["treatment_plan"]): ?>
+                                                <div class="section-title">Treatment Plan</div>
+                                                <p><?php echo nl2br(htmlspecialchars($record["treatment_plan"])); ?></p>
+                                            <?php endif; ?>
+                                            
+                                            <?php if ($record["notes"]): ?>
+                                                <div class="section-title">Doctor's Notes</div>
+                                                <p><?php echo nl2br(htmlspecialchars($record["notes"])); ?></p>
+                                            <?php endif; ?>
+                                            
+                                            <?php 
+                                            // Get medications for this record (only for medical_records)
+                                            if (!$is_medical_document) {
+                                                $sql_meds = "SELECT * FROM medications WHERE record_id = ?";
+                                                $stmt_meds = $database->prepare($sql_meds);
+                                                $stmt_meds->bind_param("i", $record["record_id"]);
+                                                $stmt_meds->execute();
+                                                $meds_result = $stmt_meds->get_result();
+                                                
+                                                if ($meds_result->num_rows > 0):
+                                                ?>
+                                                    <div class="section-title">Prescribed Medications</div>
+                                                    <?php while($med = $meds_result->fetch_assoc()): ?>
+                                                        <div class="medication-item">
+                                                            <strong><?php echo htmlspecialchars($med["medicine_name"]); ?></strong>
+                                                            <?php if ($med["dosage"]): ?>
+                                                                <div>Dosage: <?php echo htmlspecialchars($med["dosage"]); ?></div>
+                                                            <?php endif; ?>
+                                                            <?php if ($med["frequency"]): ?>
+                                                                <div>Frequency: <?php echo htmlspecialchars($med["frequency"]); ?></div>
+                                                            <?php endif; ?>
+                                                            <?php if ($med["duration"]): ?>
+                                                                <div>Duration: <?php echo htmlspecialchars($med["duration"]); ?></div>
+                                                            <?php endif; ?>
+                                                            <?php if ($med["instructions"]): ?>
+                                                                <div>Instructions: <?php echo nl2br(htmlspecialchars($med["instructions"])); ?></div>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    <?php endwhile; ?>
+                                                <?php endif; ?>
+                                            <?php } ?>
+                                            
+                                            <?php 
+                                            // Get vital signs for this record (only for medical_records)
+                                            if (!$is_medical_document) {
+                                                $sql_vitals = "SELECT * FROM vital_signs WHERE record_id = ?";
+                                                $stmt_vitals = $database->prepare($sql_vitals);
+                                                $stmt_vitals->bind_param("i", $record["record_id"]);
+                                                $stmt_vitals->execute();
+                                                $vitals_result = $stmt_vitals->get_result();
+                                                
+                                                if ($vitals_result->num_rows > 0):
+                                                    $vital = $vitals_result->fetch_assoc();
+                                                ?>
+                                                    <div class="section-title">Vital Signs</div>
+                                                    <div class="medication-item">
+                                                        <?php if ($vital["bp_systolic"] && $vital["bp_diastolic"]): ?>
+                                                            <div>Blood Pressure: <?php echo $vital["bp_systolic"]; ?>/<?php echo $vital["bp_diastolic"]; ?> mmHg</div>
+                                                        <?php endif; ?>
+                                                        <?php if ($vital["heart_rate"]): ?>
+                                                            <div>Heart Rate: <?php echo $vital["heart_rate"]; ?> bpm</div>
+                                                        <?php endif; ?>
+                                                        <?php if ($vital["temperature"]): ?>
+                                                            <div>Temperature: <?php echo $vital["temperature"]; ?> °C</div>
+                                                        <?php endif; ?>
+                                                        <?php if ($vital["respiratory_rate"]): ?>
+                                                            <div>Respiratory Rate: <?php echo $vital["respiratory_rate"]; ?> breaths/min</div>
+                                                        <?php endif; ?>
+                                                        <?php if ($vital["oxygen_saturation"]): ?>
+                                                            <div>Oxygen Saturation: <?php echo $vital["oxygen_saturation"]; ?>%</div>
+                                                        <?php endif; ?>
+                                                        <?php if ($vital["weight"]): ?>
+                                                            <div>Weight: <?php echo $vital["weight"]; ?> kg</div>
+                                                        <?php endif; ?>
+                                                        <?php if ($vital["height"]): ?>
+                                                            <div>Height: <?php echo $vital["height"]; ?> cm</div>
+                                                        <?php endif; ?>
+                                                        <?php if ($vital["bmi"]): ?>
+                                                            <div>BMI: <?php echo $vital["bmi"]; ?></div>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                            <?php } ?>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endwhile; ?>
+                            <?php else: ?>
+                                <p>You don't have any medical records yet. Your records will appear here after visiting a doctor.</p>
+                            <?php endif; ?>
+                        </div>
+                        </center>
+                    </td>
+                </tr>
+                
+            </table>
+        </div>
+    </div>
+</body>
+</html>

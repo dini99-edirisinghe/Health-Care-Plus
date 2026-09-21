@@ -1,0 +1,365 @@
+<?php
+session_start();
+
+if(isset($_SESSION["user"])){
+    if($_SESSION["user"]=="" || $_SESSION['usertype']!='p'){
+        header("location: ../login.php");
+        exit();
+    }else{
+        $useremail=$_SESSION["user"];
+    }
+}else{
+    header("location: ../login.php");
+    exit();
+}
+
+include("../connection.php");
+include("../config.php"); 
+
+if(isset($_GET['scheduleid']) && isset($_GET['fee'])){
+    $scheduleid = $_GET['scheduleid'];
+    $total_fee  = $_GET['fee'];
+
+    // ✅ FIXED QUERY (removed d.consultation_fee)
+    $sql = "SELECT s.*, d.docname, d.docemail
+            FROM schedule s
+            JOIN doctor d ON s.docid = d.docid
+            WHERE s.scheduleid = ?";
+
+    $stmt = $database->prepare($sql);
+    $stmt->bind_param("i", $scheduleid);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $schedule = $result->fetch_assoc();
+    $stmt->close();
+
+    if(!$schedule){
+        header("location: schedule.php");
+        exit();
+    }
+
+    // Fees
+    $consultation_fee     = $schedule["session_fee"];
+    $hospital_service_fee = HOSPITAL_SERVICE_FEE;
+    $fee                  = $total_fee;
+
+    // Patient details
+    $sql_patient = "SELECT * FROM patient WHERE pemail = ?";
+    $stmt_patient = $database->prepare($sql_patient);
+    $stmt_patient->bind_param("s", $useremail);
+    $stmt_patient->execute();
+    $result_patient = $stmt_patient->get_result();
+    $patient = $result_patient->fetch_assoc();
+    $stmt_patient->close();
+
+}else{
+    header("location: index.php");
+    exit();
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../css/animations.css">  
+    <link rel="stylesheet" href="../css/main.css">  
+    <link rel="stylesheet" href="../css/patient.css">
+        
+    <title>Secure Payment</title>
+    <style>
+        .payment-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        
+        .section-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .section-header h1 {
+            color: #000000;
+            font-size: 2.2rem;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .section-header p {
+            color: #333333;
+            font-size: 1.1rem;
+        }
+        
+        .details-card {
+            background: #ffffff;
+            border: 1px solid #dddddd;
+            border-radius: 8px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .details-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            align-items: start;
+        }
+        
+        @media (max-width: 768px) {
+            .details-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .detail-item {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            background: #f9f9f9;
+            border-left: 3px solid #333333;
+        }
+        
+        .detail-label {
+            font-weight: 600;
+            color: #666666;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+        
+        .detail-value {
+            font-size: 1.2rem;
+            color: #000000;
+            font-weight: 500;
+        }
+        
+        .fee-highlight {
+            font-size: 1.8rem;
+            color: #000000;
+            font-weight: 700;
+        }
+        
+        .payment-method-card {
+            background: #ffffff;
+            border: 1px solid #dddddd;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            color: #000000;
+        }
+        
+        .card-icon {
+            font-size: 3rem;
+            margin-bottom: 20px;
+        }
+        
+        .payment-title {
+            font-size: 1.8rem;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .payment-description {
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+            color: #333333;
+        }
+        
+        .action-button {
+            background: #000000;
+            color: #ffffff;
+            border: 1px solid #000000;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        
+        .action-button:hover {
+            background: #333333;
+            border: 1px solid #333333;
+        }
+        
+        .security-badge {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 20px;
+            color: #666666;
+            font-size: 0.9rem;
+        }
+        
+        .security-badge span {
+            margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
+    <?php include("../connection.php"); ?>
+    <div class="container">
+        <div class="menu">
+            <table class="menu-container" border="0">
+                <tr>
+                    <td style="padding:10px" colspan="2">
+                        <table border="0" class="profile-container">
+                            <tr>
+                                <td width="30%" style="padding-left:20px" >
+                                    <?php if(isset($userfetch["profile_picture"]) && $userfetch["profile_picture"]): ?>
+                                        <img src="../uploads/profile_pictures/<?php echo htmlspecialchars($userfetch["profile_picture"]); ?>" alt="" width="100%" style="border-radius:50%">
+                                    <?php else: ?>
+                                        <img src="../img/user.png" alt="" width="100%" style="border-radius:50%">
+                                    <?php endif; ?>
+                                </td>
+                                <td style="padding:0px;margin:0px;">
+                                    <p class="profile-title">Patient</p>
+                                    <p class="profile-subtitle"><?php echo $useremail;?></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td colspan="2">
+                                <a href="../logout.php" ><input type="button" value="Log out" class="logout-btn btn-primary-soft btn"></a>
+                                </td>
+                            </tr>
+                    </table>
+                    </td>
+                
+                </tr>
+                <tr class="menu-row" >
+                    <td class="menu-btn menu-icon-home " >
+                        <a href="index.php" class="non-style-link-menu "><div><p class="menu-text">Home</p></a></div></a>
+                    </td>
+                </tr>
+                <tr class="menu-row">
+                    <td class="menu-btn menu-icon-doctor">
+                        <a href="doctors.php" class="non-style-link-menu"><div><p class="menu-text">All Doctors</p></a></div>
+                    </td>
+                </tr>
+                
+                <tr class="menu-row" >
+                    <td class="menu-btn menu-icon-session">
+                        <a href="schedule.php" class="non-style-link-menu"><div><p class="menu-text">Scheduled Sessions</p></div></a>
+                    </td>
+                </tr>
+                <tr class="menu-row" >
+                    <td class="menu-btn menu-icon-appoinment">
+                        <a href="appointment.php" class="non-style-link-menu"><div><p class="menu-text">My Bookings</p></a></div>
+                    </td>
+                </tr>
+                <tr class="menu-row" >
+                    <td class="menu-btn menu-icon-payment">
+                        <a href="payment_reports.php" class="non-style-link-menu"><div><p class="menu-text">My Payments</p></div></a>
+                    </td>
+                </tr>
+                <tr class="menu-row" >
+                    <td class="menu-btn menu-icon-settings">
+                        <a href="settings.php" class="non-style-link-menu"><div><p class="menu-text">Settings</p></a></div>
+                    </td>
+                </tr>
+                
+            </table>
+        </div>
+        <div class="dash-body" style="margin-top: 15px">
+            <table border="0" width="100%" style=" border-spacing: 0;margin:0;padding:0;margin-top:25px; ">
+                <tr >
+                    <td width="13%" >
+                        <a href="schedule.php" ><button  class="login-btn btn-primary-soft btn btn-icon-back"  style="padding-top:11px;padding-bottom:11px;margin-left:20px;width:125px"><font class="tn-in-text">Back</font></button></a>
+                    </td>
+                    <td>
+                        <p style="font-size: 23px;padding-left:12px;font-weight: 600;">Secure Payment Processing</p>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="2">
+                        <div class="payment-container">
+                            <div class="section-header">
+                                <h1>Secure Payment Processing</h1>
+                                <p>Complete your appointment booking with confidence</p>
+                            </div>
+                            
+                            <div class="details-grid">
+                                <div class="details-card">
+                                    <h2 style="color: #000000; margin-bottom: 25px; font-size: 1.5rem;">Appointment Details</h2>
+                                    
+                                    <div class="detail-item">
+                                        <div class="detail-label">Doctor</div>
+                                        <div class="detail-value"><?php echo htmlspecialchars($schedule['docname']);?></div>
+                                    </div>
+                                    
+                                    <div class="detail-item">
+                                        <div class="detail-label">Specialization</div>
+                                        <div class="detail-value">
+                                            <?php 
+                                            
+                                            $spec_sql = "SELECT sname FROM specialties WHERE id=?";
+                                            $spec_stmt = $database->prepare($spec_sql);
+                                            $spec_stmt->bind_param("i", $schedule['specialties']);
+                                            $spec_stmt->execute();
+                                            $spec_result = $spec_stmt->get_result();
+                                            $specialty = $spec_result->fetch_assoc();
+                                            echo htmlspecialchars($specialty['sname'] ?? 'General');
+                                            $spec_stmt->close();
+                                            ?>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="detail-item">
+                                        <div class="detail-label">Session Title</div>
+                                        <div class="detail-value"><?php echo htmlspecialchars($schedule['title']);?></div>
+                                    </div>
+                                    
+                                    <div class="detail-item">
+                                        <div class="detail-label">Date & Time</div>
+                                        <div class="detail-value">
+                                            <?php echo date("F j, Y", strtotime($schedule['scheduledate']));?> at 
+                                            <?php echo date("g:i A", strtotime($schedule['scheduletime']));?>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="detail-item">
+                                        <div class="detail-label">Fee Breakdown</div>
+                                        <div class="detail-value">
+                                            Consultation Fee: <b>LKR <?php echo number_format($consultation_fee, 2);?></b><br>
+                                            Hospital Service Fee: <b>LKR <?php echo number_format($hospital_service_fee, 2);?></b><br>
+                                            <hr>
+                                            <strong>Total Amount: <span class="fee-highlight">LKR <?php echo number_format($fee, 2);?></span></strong>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="payment-method-card">
+                                    <div class="card-icon">💳</div>
+                                    <h2 class="payment-title">Direct Card Payment</h2>
+                                    <p class="payment-description">Enter your card details securely to complete your appointment booking</p>
+                                    
+                                    <form action="card-details.php" method="get">
+                                        <input type="hidden" name="scheduleid" value="<?php echo $scheduleid; ?>">
+                                        <input type="hidden" name="fee" value="<?php echo $fee; ?>">
+                                        <button type="submit" class="action-button">
+                                            <span class="button-text">Proceed to Secure Payment</span>
+                                        </button>
+                                    </form>
+                                    
+                                    <div class="security-badge">
+                                        <span>🔒 256-bit SSL Encryption</span>
+                                    </div>
+                                    <div class="security-badge">
+                                        <span>🛡️ PCI DSS Compliant</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
+
